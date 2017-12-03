@@ -169,18 +169,28 @@ int sfs_getnextfilename(char *fname){
 			return 1;
 		} else {
 			// all the files have been returned
-			dir_pos = 0;
-			return 0;
+			break;
 		}
 	}
-	// out_of_bound
-	printf("Reached maximum directory allowance\n");
-	dis_pos = 0;
-	return -1;
+	printf("Reached end of directory\n");
+	dir_pos = 0;
+	return 0;
 }
 
 int sfs_getfilesize(const char* path){
-
+	// Since there's only a root directory in this assignment, file path is equivalent to file length 
+	// According to provided test cases, there's slash symbol before filename
+	int current = 0;
+	while (current < NUM_INODES){
+		if (strcmp(path, rootDir[current].name)==0){
+			return in_table[rootDir[current].num].size;
+		} else if (rootDir[current].num = -1) {
+			break; // reached the end of directory entry table
+		}
+		current++;
+	}
+	printf("File does not exist\n");
+	return 0;
 }
 
 int sfs_fopen(char *name){
