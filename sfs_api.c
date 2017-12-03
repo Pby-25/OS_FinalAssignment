@@ -33,8 +33,11 @@ inode_t *in_table = NULL;
 file_descriptor *fd_table = NULL;
 directory_entry *rootDir = NULL;
 
-//initialize all bits to high
+// initialize all bits to high
 uint8_t free_bit_map[BITMAP_ROW_SIZE] = { [0 ... BITMAP_ROW_SIZE - 1] = UINT8_MAX };
+
+// initialize a variable to record current position in directory
+int dir_pos = 0;
 
 /*------------------------------------------------------------------*/
 
@@ -88,6 +91,9 @@ void init_fdt(){
 // Helper function that initialize the root directory table
 void init_rdt(){
 	rootDir = malloc(sizeof(directory_entry)*NUM_INODES);
+	for (int i=0; i<NUM_INODES; i++){
+		rootDir[i].num = -1;
+	}
 }
 
 // Helper function that calculate the number of block needed
@@ -136,7 +142,7 @@ void mksfs(int fresh) {
 		}
 
 		// format the emulated disk
-		write_blocks(0, super_size, sb_table);// TODO
+		write_blocks(0, super_size, sb_table);
 		write_blocks(super_size, inodes_size, in_table);
 		write_blocks(super_size + inodes_size, dir_size, rootDir);
 		write_blocks(NUM_BLOCKS-1, 1, free_bit_map);
@@ -156,28 +162,48 @@ void mksfs(int fresh) {
 
 
 int sfs_getnextfilename(char *fname){
-
+	while (dir_pos < NUM_INODES){
+		dir_pos++;
+		if (rootDir[dir_pos].num != -1){
+			strcpy(fname, rootDir[dir_pos].name);
+			return 1;
+		} else {
+			// all the files have been returned
+			dir_pos = 0;
+			return 0;
+		}
+	}
+	// out_of_bound
+	printf("Reached maximum directory allowance\n");
+	dis_pos = 0;
+	return -1;
 }
+
 int sfs_getfilesize(const char* path){
 
 }
+
 int sfs_fopen(char *name){
 
 }
+
 int sfs_fclose(int fileID) {
 
 }
+
 int sfs_fread(int fileID, char *buf, int length) {
 	
 }
+
 int sfs_fwrite(int fileID, const char *buf, int length) {
 
 }
+
 int sfs_fseek(int fileID, int loc) {
 
 }
+
 int sfs_remove(char *file) {
 
 
 }
-
