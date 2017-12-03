@@ -13,7 +13,8 @@
 
 #define MAGIC_NUM 0xACBD0005 // format code for the file system
 #define DEFAULT_BLOCK_SIZE 1024
-#define NUM_INODES 100 // maximum number of inodes
+#define NUM_INODES 100 // maximum number of inodes (specification given in the assignment)
+#define ROOT_INODE 0 // index of the root directory
 
 /* macros */
 #define FREE_BIT(_data, _which_bit) \
@@ -23,7 +24,9 @@
     _data = _data & ~(1 << _which_bit)
 
 
-// Declare the global variables
+/*------------------------------------------------------------------*/
+/*						   GLOBAL VARIABLES				            */
+/*------------------------------------------------------------------*/
 // initialize pointers as null pointers to avoid undefined free()
 superblock_t *sb_table = NULL;
 inode_t *in_table = NULL;
@@ -33,23 +36,27 @@ directory_entry *rootDir = NULL;
 //initialize all bits to high
 uint8_t free_bit_map[BITMAP_ROW_SIZE] = { [0 ... BITMAP_ROW_SIZE - 1] = UINT8_MAX };
 
+/*------------------------------------------------------------------*/
+
+
 // Helper function that initialize the superblock section
 void init_super(){
 	// initialize the superblock table
-	free(sb_table);
+	// free(sb_table);
 	sb_table = malloc(sizeof(superblock_t));
 	// assign the initial values
 	sb_table->magic = MAGIC_NUM;
 	sb_table->block_size = DEFAULT_BLOCK_SIZE;
 	sb_table->fs_size = NUM_BLOCKS;
 	sb_table->inode_table_len = NUM_INODES;
-	sb_table->root_dir_inode = rootDir;
+	sb_table->root_dir_inode = ROOT_INODE;
+	
 }
 
 // Helper function that initialize the inode table
 void init_int(){
 	// initialize the inode table array
-	free(in_table);
+	// free(in_table);
 	in_table = malloc(sizeof(inode_t)*NUM_INODES);
 	// assign the initial values
 	for (int i=0; i<NUM_INODES; i++){
@@ -58,26 +65,92 @@ void init_int(){
 		in_table[i].uid = -1;
 		in_table[i].gid = -1;
 		in_table[i].size = -1;
-		// TODO
-		// in_table[i].data_ptrs;
-		// in_table[i].indirectPointer;
+		for (int j=0; j<12; j++){
+			in_table[i].data_ptrs[j] = -1;
+		}	
+		in_table[i].indirectPointer = -1;
 		
 	}
 }
 
 // Helper function that initialize the file descriptor table
 void init_fdt(){
-	
+	// free(fd_table);
+	fd_table = malloc(sizeof(file_descriptor*(NUM_INODES)));
+	// assign the initial values
+	for (int i=0; i<NUM_INODES; i++){
+		fd_table[i].inodeIndex = -1;
+		fd_table[i].inode = NULL;
+		fd_table[i].rwptr = -1;
+	}
+}
+
+// Helper function that initialize the root directory table
+void init_rdt(){
+	rootDir = malloc(sizeof(directory_entry)*NUM_INODES);
+}
+
+// Helper function that calculate the number of block needed
+unsigned int block_req(unsigned int n){
+	return (n + DEFAULT_BLOCK_SIZE-1)/DEFAULT_BLOCK_SIZE; // ceil divison by 1024, ignore the unlikely event of overflowing
 }
 
 void mksfs(int fresh) {
+	unsigned int super_size = block_req(sizeof(superblock_t));
+	unsigned int inodes_size = block_req(sizeof(inode_t)*NUM_INODES);
+	unsigned int dir_size = block_req(sizeof(directory_entry)*NUM_INODES);
+
 	if (fresh) {
 		// initialize a fresh disk
-		init_fresh_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS);
+		init_fresh_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS); //TODO
 
-		// 
+		// initialzie the global variabes
+		init_super();
+		init_int();
+		init_fdt();
+		init_rdt();
+
+		init_bitmap();
+
+		// initialize the bitma
+		int index = 0;
+		// superblock
+		for(index; index < super_size; index++){
+			force_set_index(index);
+		}
+		// inode table
+		for(index; index < inodes_size + super_size; index++){
+			force_set_index(index);
+		}
+		// directory entry table
+		for(index; index < dir_size + inodes_size + super_size; index++){
+			force_set_index(index);
+		}
+		// bitmap itself
+		force_set_index(NUM_BLOCKS-1);		
+		
+		// setup the root directory inode
+		in_table[ROOT_INODE].size =  dir_size;
+		for (int i=0; i<block_req(dir_size); i++){ // the root directory table occupies less than 12 blocks
+			in_table[ROOT_INODE].data_ptrs[i] = i + inodes_size + super_size;
+		}
+
+		// format the emulated disk
+		write_blocks(0, super_size, sb_table);// TODO
+		write_blocks(super_size, inodes_size, in_table);
+		write_blocks(super_size + inodes_size, dir_size, rootDir);
+		write_blocks(NUM_BLOCKS-1, 1, free_bit_map);
+
 	} else {
 		init_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS);
+		// Read data into appropriate global variables
+		read_blocks(0, super_size, sb_table);// TODO
+		read_blocks(super_size, inodes_size, in_table);
+		read_blocks(super_size + inodes_size, dir_size, rootDir);
+		read_blocks(NUM_BLOCKS-1, 1, free_bit_map);
+		// initialize the file directory in memory
+		init_fdt();
+
 	}
 }
 

@@ -39,7 +39,7 @@ typedef struct file_descriptor {
 typedef struct directory_entry{
     int num; // represents the inode number of the entery. 
     char name[MAX_FILE_NAME]; // represents the name of the entery. 
-}directory_entry;
+} directory_entry;
 
 
 void mksfs(int fresh);
