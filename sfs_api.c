@@ -16,9 +16,11 @@
 #define NUM_INODES 100 // maximum number of inodes (specification given in the assignment)
 #define ROOT_INODE 0 // index of the root directory
 
-#define SUPER_BLOCK_N (sizeof(superblock_t)+DEFAULT_BLOCK_SIZE-1)/DEFAULT_BLOCK_SIZE
-#define INODES_BLOCK_N (sizeof(inode_t)*NUM_INODES+DEFAULT_BLOCK_SIZE-1)/DEFAULT_BLOCK_SIZE
-#define DIR_BLOCK_N (sizeof(directory_entry)*NUM_INODES+DEFAULT_BLOCK_SIZE-1)/DEFAULT_BLOCK_SIZE
+#define BLOCK_REQ(n) ((n+DEFAULT_BLOCK_SIZE-1)/DEFAULT_BLOCK_SIZE)
+
+#define SUPER_BLOCK_N BLOCK_REQ(sizeof(superblock_t))
+#define INODES_BLOCK_N BLOCK_REQ(sizeof(inode_t)*NUM_INODES)
+#define DIR_BLOCK_N BLOCK_REQ(sizeof(directory_entry)*NUM_INODES)
 
 /* macros */
 #define FREE_BIT(_data, _which_bit) \
@@ -31,7 +33,6 @@
 /*------------------------------------------------------------------*/
 /*						   GLOBAL VARIABLES				            */
 /*------------------------------------------------------------------*/
-// initialize pointers as null pointers to avoid undefined free()
 superblock_t *sb_table = NULL;
 inode_t *in_table = NULL;
 file_descriptor *fd_table = NULL;
@@ -176,7 +177,7 @@ int sfs_getfilesize(const char* path){
 	// Since there's only a root directory in this assignment, file path is equivalent to file length 
 	// According to provided test cases, there's slash symbol before filename
 	int current = 0;
-	while (current < NUM_INODES){
+	while (current < NUM_INODES){ // avoided using sfs_getnextfilename() to keep the global variable intact
 		if (strcmp(path, rootDir[current].name)==0){
 			return in_table[rootDir[current].num].size;
 		} 
@@ -248,6 +249,9 @@ int sfs_fclose(int fileID) {
 	return 0;
 }
 
+// Helper function to create indirect pointer datablock
+
+
 int sfs_fread(int fileID, char *buf, int length) {
 	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fildID].rwptr / DEFAULT_BLOCK_SIZE;
@@ -281,7 +285,10 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fildID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fildID].rwptr % DEFAULT_BLOCK_SIZE;
-	
+	// Adjust the size information about the updated file
+	if (fd_table[fileID].inode->size < fd_table[fildID].rwptr + length){
+		fd_table[fileID].inode->size = fd_table[fildID].rwptr + length;
+	}
 	while (length > 0){
 	
 		// copy from origin buffer to temporary buffer
@@ -327,7 +334,7 @@ int sfs_remove(char *file) {
 	int current = 0;
 	while (current < NUM_INODES){
 		if (strcmp(file, rootDir[current].name)==0){
-			int blocks_occ = (in_table[rootDir[current].num].size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE
+			int blocks_occ = BLOCK_REQ(in_table[rootDir[current].num].size)
 
 			if (blocks_occ>12){
 				// TODO indirect pointer
