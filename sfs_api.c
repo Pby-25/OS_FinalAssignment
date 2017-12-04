@@ -239,15 +239,44 @@ int sfs_fopen(char *name){
 }
 
 int sfs_fclose(int fileID) {
-
+	fd_table[fildID].inodeIndex = -1;
+	fd_table[fildID].inode = NULL;
+	fd_table[fildID].rwptr = 0;
+	return 0;
 }
 
 int sfs_fread(int fileID, char *buf, int length) {
-	
+	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
+	int shift = fd_table[fildID].rwptr / DEFAULT_BLOCK_SIZE;
+	int rem = fd_table[fildID].rwptr % DEFAULT_BLOCK_SIZE;
+
+	while(length > 0){
+		
+		// Read from disk to a temporary buffer
+		if(shift < 12){ 
+			read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
+		} else { // the data pointer reside in indirect pointer part
+			//TODO
+		}
+
+		// Copy from temporary buffer to destination buffer
+		if (length <= DEFAULT_BLOCK_SIZE - rem){ // reached the last part of data requested
+			memcpy(buf, tmp + rem, length);
+			break;
+		} else{
+			memcpy(buf, tmp + rem, DEFAULT_BLOCK_SIZE - rem);
+			shift++;
+			length -= DEFAULT_BLOCK_SIZE;
+			buf += DEFAULT_BLOCK_SIZE;
+			if (rem > 0) rem = 0; // if this is the first part of data requested
+		}
+		
+	}
+	free(tmp);
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length) {
-
+	
 }
 
 int sfs_fseek(int fileID, int loc) {
