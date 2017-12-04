@@ -262,28 +262,61 @@ int sfs_fread(int fileID, char *buf, int length) {
 		// Copy from temporary buffer to destination buffer
 		if (length <= DEFAULT_BLOCK_SIZE - rem){ // reached the last part of data requested
 			memcpy(buf, tmp + rem, length);
-			break;
 		} else{
 			memcpy(buf, tmp + rem, DEFAULT_BLOCK_SIZE - rem);
-			shift++;
-			length -= DEFAULT_BLOCK_SIZE;
-			buf += DEFAULT_BLOCK_SIZE;
-			if (rem > 0) rem = 0; // if this is the first part of data requested
 		}
-		
+		shift++;
+		length -= DEFAULT_BLOCK_SIZE;
+		buf += DEFAULT_BLOCK_SIZE;
+		if (rem > 0) rem = 0; // if this is the first part of data requested		
 	}
 	free(tmp);
+	return 0;
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length) {
+	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
+	int shift = fd_table[fildID].rwptr / DEFAULT_BLOCK_SIZE;
+	int rem = fd_table[fildID].rwptr % DEFAULT_BLOCK_SIZE;
 	
+	while (length > 0){
+	
+		// copy from origin buffer to temporary buffer
+		if (rem > 0){ // first section to be written
+			read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
+		}	
+		if(length + rem <= DEFAULT_BLOCK_SIZE){ // if this is the last part of data
+			memcpy(tmp + rem, buf, length);
+		} else{
+			memcpy(tmp + rem, buf, DEFAULT_BLOCK_SIZE);
+		}
+
+		// write to disk
+		if (shift < 12){
+			// allocate space if needed
+			if (fd_table[fileID].inode->data_ptrs[shift] == -1){
+				fd_table[fileID].inode->data_ptrs[shift] = get_index();
+			}
+			write_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
+
+		} else { // if indirect pointer need to be used
+			//TODO
+		}
+		shift++;
+		length -= DEFAULT_BLOCK_SIZE;
+		buf += DEFAULT_BLOCK_SIZE;
+		if (rem > 0) rem = 0;
+	}
+	// update the possible changes to bitmap
+	write_blocks(NUM_BLOCKS-1, 1, free_bit_map);
+	free(tmp);
+	return 0;
 }
 
 int sfs_fseek(int fileID, int loc) {
-
+	
 }
 
 int sfs_remove(char *file) {
-
-
+	
 }
