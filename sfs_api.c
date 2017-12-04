@@ -164,11 +164,8 @@ void mksfs(int fresh) {
 int sfs_getnextfilename(char *fname){
 	while (dir_pos < NUM_INODES){
 		if (rootDir[dir_pos].num != -1){
-			strcpy(fname, rootDir[dir_pos].name);
+			strncpy(fname, rootDir[dir_pos].name, MAX_FILE_NAME);
 			return 1;
-		} else {
-			// all the files have been returned
-			break;
 		}
 		dir_pos++;
 	}
@@ -184,9 +181,7 @@ int sfs_getfilesize(const char* path){
 	while (current < NUM_INODES){
 		if (strcmp(path, rootDir[current].name)==0){
 			return in_table[rootDir[current].num].size;
-		} else if (rootDir[current].num = -1) {
-			break; // reached the end of directory entry table
-		}
+		} 
 		current++;
 	}
 	printf("File does not exist\n");
@@ -195,8 +190,9 @@ int sfs_getfilesize(const char* path){
 
 int sfs_fopen(char *name){
 	int current = 0;
+	int i = 0;
 	while (current < NUM_INODES){
-		int i = 0;
+		// If the file exists
 		if (strcmp(name, rootDir[current].name)==0){
 			while(i<NUM_INODES){
 				if(fd_table[i].inodeIndex == -1){
@@ -210,32 +206,41 @@ int sfs_fopen(char *name){
 			}
 			printf("Reached maximum file descriptor allowance\n");
 			return -1;
-		} else if (rootDir[current].num = -1) {
-			// make a new file
-			while(i<NUM_INODES){
-				if(fd_table[i].inodeIndex == -1){
-					int j = 0;
-					while (j<NUM_INODES){
-						if(in_table[j].size == -1){
-							in_table[j].size = 0;
-							fd_table[i].inodeInde = j;
-							fd_table[i].inode = &in_table[j];
-							return i;
-						}
-						j++;
-					}
-					printf("Reached maximum inode allowance\n");
-					return -1;
-				}
-				i++;
-			}
-			printf("Reached maximum file descriptor allowance\n");
-			return -1;
 		}
 		current++;
 	}
-	printf("Reached maximum inode allowance without finding an empty spot\n");
+	// if the file does not exist, make a new one
+	current = 0;
+	while (current < NUM_INODES){
+		if (rootDir[current].num == -1) break;
+		current++;
+		}
+	i =0;
+	while(i<NUM_INODES){
+		if(fd_table[i].inodeIndex == -1){
+			int j = 0;
+			while (j<NUM_INODES){
+				if(in_table[j].size == -1){
+					// setup the inode table
+					in_table[j].size = 0;
+					// setup the directory entry
+					rootDir[current].num = j;
+					strncpy(rootDir[current].name, name, MAX_FILE_NAME);
+					// setup the file descriptor
+					fd_table[i].inodeInde = j;
+					fd_table[i].inode = &in_table[j];
+					return i;
+				}
+				j++;
+			}
+			printf("Reached maximum inode allowance\n");
+			return -1;
+		}
+		i++;
+	}
+	printf("Reached maximum file descriptor allowance\n");
 	return -1;
+
 }
 
 int sfs_fclose(int fileID) {
@@ -314,7 +319,7 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 }
 
 int sfs_fseek(int fileID, int loc) {
-	
+	fd_table[fileID].rwptr = loc;
 }
 
 int sfs_remove(char *file) {
