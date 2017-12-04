@@ -239,6 +239,7 @@ int sfs_fread(int fileID, char *buf, int length) {
 	  int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	  int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
 	  int read_count = 0;
+    uint16_t *ind_ptr;
 
 	  // Avoid reading garbage values
 	  if (fd_table[fileID].rwptr + length > fd_table[fileID].inode->size){
@@ -248,7 +249,7 @@ int sfs_fread(int fileID, char *buf, int length) {
 	// check if an indirect pointer is needed after removing garbage values
 	int iptr_req = BLOCK_REQ(fd_table[fileID].rwptr + length) > 12;
 	if (iptr_req){
-		uint16_t *ind_ptr = malloc(DEFAULT_BLOCK_SIZE);
+		ind_ptr = malloc(DEFAULT_BLOCK_SIZE);
 		read_blocks(fd_table[fileID].inode->indirectPointer, 1, ind_ptr);
 	}
 
@@ -293,7 +294,8 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
-	
+  uint16_t *ind_ptr;
+
 	// Adjust the size information about the updated file
 	if (fd_table[fileID].inode->size < fd_table[fileID].rwptr + length){
 		fd_table[fileID].inode->size = fd_table[fileID].rwptr + length;
@@ -302,7 +304,7 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	// check if it is necessary to access the indirect pointer section
 	int iptr_req = BLOCK_REQ(fd_table[fileID].rwptr + length) > 12;
 	if (iptr_req){
-		uint16_t *ind_ptr = malloc(DEFAULT_BLOCK_SIZE);
+		ind_ptr = malloc(DEFAULT_BLOCK_SIZE);
 
 		// if the indirect pointer has not been allocated
 		if (fd_table[fileID].inode->indirectPointer == -1){
@@ -339,9 +341,12 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 			write_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
 
 		} else { // if indirect pointer need to be used
-			
+            if ( shift-12 >= DEFAULT_BLOCK_SIZE/sizeof(uint16_t)){
+                printf("Single file size limit reached\n");
+                break;
+            }
 			// allocate space if needed
-			if (ind_ptr[shift-12] == -1){
+			if (ind_ptr[shift-12] == (uint16_t)-1){
 				ind_ptr[shift-12] = get_index();
 			}
 			write_blocks(ind_ptr[shift-12], 1, tmp);
@@ -363,7 +368,7 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 		write_blocks(fd_table[fileID].inode->indirectPointer, 1, ind_ptr);
 		free(ind_ptr);
 	}
-	
+
 	// update the rw pointer
 	fd_table[fileID].rwptr += write_count;
 	return write_count;
@@ -384,7 +389,7 @@ int sfs_remove(char *file) {
 		if (strncmp(file, rootDir[current].name, MAX_FILE_NAME)==0){
 			int blocks_occ = BLOCK_REQ(in_table[rootDir[current].num].size);
 
-			
+
 			if (blocks_occ>12){
 				uint16_t *ind_ptr = malloc(DEFAULT_BLOCK_SIZE);
 				read_blocks(in_table[rootDir[current].num].indirectPointer, 1, ind_ptr);

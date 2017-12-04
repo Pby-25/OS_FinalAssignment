@@ -1,6 +1,9 @@
 .vscode
 test/cmake*
 test/.*
-test/*.o
+*.o
 tmp*
 update.sh
+test/260*
+260*
+*.disk
