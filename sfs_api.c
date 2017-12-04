@@ -9,7 +9,6 @@
 #include "disk_emu.h"
 #define DU_ZHUOCHENG_DISK "sfs_disk.disk"
 #define NUM_BLOCKS 1024  //maximum number of data blocks on the disk.
-#define BITMAP_ROW_SIZE (NUM_BLOCKS/8) // this essentially mimcs the number of rows we have in the bitmap. we will have 128 rows. 
 
 #define MAGIC_NUM 0xACBD0005 // format code for the file system
 #define DEFAULT_BLOCK_SIZE 1024
@@ -22,24 +21,13 @@
 #define INODES_BLOCK_N BLOCK_REQ(sizeof(inode_t)*NUM_INODES)
 #define DIR_BLOCK_N BLOCK_REQ(sizeof(directory_entry)*NUM_INODES)
 
-/* macros */
-#define FREE_BIT(_data, _which_bit) \
-    _data = _data | (1 << _which_bit)
-
-#define USE_BIT(_data, _which_bit) \
-    _data = _data & ~(1 << _which_bit)
-
-
 /*------------------------------------------------------------------*/
 /*						   GLOBAL VARIABLES				            */
 /*------------------------------------------------------------------*/
-superblock_t *sb_table = NULL;
-inode_t *in_table = NULL;
-file_descriptor *fd_table = NULL;
-directory_entry *rootDir = NULL;
-
-// initialize all bits to high
-uint8_t free_bit_map[BITMAP_ROW_SIZE] = { [0 ... BITMAP_ROW_SIZE - 1] = UINT8_MAX };
+superblock_t sb_table;
+inode_t in_table[NUM_INODES];
+file_descriptor fd_table[NUM_INODES];
+directory_entry rootDir[NUM_INODES];
 
 // initialize a variable to record current position in directory
 int dir_pos = 0;
@@ -50,22 +38,17 @@ int dir_pos = 0;
 // Helper function that initialize the superblock section
 void init_super(){
 	// initialize the superblock table
-	// free(sb_table);
-	sb_table = malloc(sizeof(superblock_t));
 	// assign the initial values
-	sb_table->magic = MAGIC_NUM;
-	sb_table->block_size = DEFAULT_BLOCK_SIZE;
-	sb_table->fs_size = NUM_BLOCKS;
-	sb_table->inode_table_len = NUM_INODES;
-	sb_table->root_dir_inode = ROOT_INODE;
-	
+	sb_table.magic = MAGIC_NUM;
+	sb_table.block_size = DEFAULT_BLOCK_SIZE;
+	sb_table.fs_size = NUM_BLOCKS;
+	sb_table.inode_table_len = NUM_INODES;
+	sb_table.root_dir_inode = ROOT_INODE;
+
 }
 
 // Helper function that initialize the inode table
 void init_int(){
-	// initialize the inode table array
-	// free(in_table);
-	in_table = malloc(sizeof(inode_t)*NUM_INODES);
 	// assign the initial values
 	for (int i=0; i<NUM_INODES; i++){
 		in_table[i].mode = -1;
@@ -75,16 +58,14 @@ void init_int(){
 		in_table[i].size = -1;
 		for (int j=0; j<12; j++){
 			in_table[i].data_ptrs[j] = -1;
-		}	
+		}
 		in_table[i].indirectPointer = -1;
-		
+
 	}
 }
 
 // Helper function that initialize the file descriptor table
 void init_fdt(){
-	// free(fd_table);
-	fd_table = malloc(sizeof(file_descriptor*(NUM_INODES)));
 	// assign the initial values
 	for (int i=0; i<NUM_INODES; i++){
 		fd_table[i].inodeIndex = -1;
@@ -95,7 +76,6 @@ void init_fdt(){
 
 // Helper function that initialize the root directory table
 void init_rdt(){
-	rootDir = malloc(sizeof(directory_entry)*NUM_INODES);
 	for (int i=0; i<NUM_INODES; i++){
 		rootDir[i].num = -1;
 		rootDir[i].name[0] = '\0';
@@ -104,7 +84,7 @@ void init_rdt(){
 
 
 void mksfs(int fresh) {
-	
+
 	if (fresh) {
 		// initialize a fresh disk
 		init_fresh_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS); //TODO
@@ -115,25 +95,13 @@ void mksfs(int fresh) {
 		init_fdt();
 		init_rdt();
 
-		init_bitmap();
-
-		// initialize the bitma
-		int index = 0;
-		// superblock
-		for(index; index < SUPER_BLOCK_N; index++){
-			force_set_index(index);
-		}
-		// inode table
-		for(index; index < INODES_BLOCK_N + SUPER_BLOCK_N; index++){
-			force_set_index(index);
-		}
-		// directory entry table
-		for(index; index < DIR_BLOCK_N + INODES_BLOCK_N + SUPER_BLOCK_N; index++){
+		// initialize the bitmap for the superblock, inodes, and directories
+		for(int index = 0; index < DIR_BLOCK_N + INODES_BLOCK_N + SUPER_BLOCK_N; index++){
 			force_set_index(index);
 		}
 		// bitmap itself
-		force_set_index(NUM_BLOCKS-1);		
-		
+		force_set_index(NUM_BLOCKS-1);
+
 		// setup the root directory inode
 		in_table[ROOT_INODE].size =  sizeof(directory_entry)*NUM_INODES;
 		for (int i=0; i<DIR_BLOCK_N; i++){ // the root directory table occupies less than 12 blocks
@@ -141,7 +109,7 @@ void mksfs(int fresh) {
 		}
 
 		// format the emulated disk
-		write_blocks(0, SUPER_BLOCK_N, sb_table);
+		write_blocks(0, SUPER_BLOCK_N, &sb_table);
 		write_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table);
 		write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir);
 		write_blocks(NUM_BLOCKS-1, 1, free_bit_map);
@@ -149,7 +117,7 @@ void mksfs(int fresh) {
 	} else {
 		init_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS);
 		// Read data into appropriate global variables
-		read_blocks(0, SUPER_BLOCK_N, sb_table);// TODO
+		read_blocks(0, SUPER_BLOCK_N, &sb_table);// TODO
 		read_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table);
 		read_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir);
 		read_blocks(NUM_BLOCKS-1, 1, free_bit_map);
@@ -174,13 +142,13 @@ int sfs_getnextfilename(char *fname){
 }
 
 int sfs_getfilesize(const char* path){
-	// Since there's only a root directory in this assignment, file path is equivalent to file length 
+	// Since there's only a root directory in this assignment, file path is equivalent to file length
 	// According to provided test cases, there's slash symbol before filename
 	int current = 0;
 	while (current < NUM_INODES){ // avoided using sfs_getnextfilename() to keep the global variable intact
 		if (strcmp(path, rootDir[current].name)==0){
 			return in_table[rootDir[current].num].size;
-		} 
+		}
 		current++;
 	}
 	printf("File does not exist\n");
@@ -188,21 +156,29 @@ int sfs_getfilesize(const char* path){
 }
 
 int sfs_fopen(char *name){
-	int current = 0;
-	int i = 0;
+
+  int current = 0;
+  int unused_fd = 0;
 	while (current < NUM_INODES){
 		// If the file exists
 		if (strcmp(name, rootDir[current].name)==0){
-			while(i<NUM_INODES){
-				if(fd_table[i].inodeIndex == -1){
-					// load the corresponding inode into file descriptor
-					fd_table[i].inodeIndex = rootDir[current].num;
-					fd_table[i].inode = &in_table[rootDir[current].num];
-					fd_table[i].rwptr = in_table[rootDir[current].num].size;
-					return i;
-				}
+      // Make sure the file is not already opened
+      int i = 0;
+      while(i < NUM_INODES){
+          if (fd_table[i].inodeIndex == rootDir[current].num){
+            return i;
+          }
 				i++;
 			}
+      while (unused_fd < NUM_INODES ){
+        if(fd_table[unused_fd].inodeIndex == -1){
+          // load the corresponding inode into file descriptor
+          fd_table[unused_fd].inodeIndex = rootDir[current].num;
+          fd_table[unused_fd].inode = &in_table[rootDir[current].num];
+          fd_table[unused_fd].rwptr = in_table[rootDir[current].num].size;
+          return unused_fd;
+        }
+      }
 			printf("Reached maximum file descriptor allowance\n");
 			return -1;
 		}
@@ -214,38 +190,42 @@ int sfs_fopen(char *name){
 		if (rootDir[current].num == -1) break;
 		current++;
 		}
-	i =0;
-	while(i<NUM_INODES){
-		if(fd_table[i].inodeIndex == -1){
-			int j = 0;
-			while (j<NUM_INODES){
-				if(in_table[j].size == -1){
+	unused_fd =0;
+	while(unused_fd<NUM_INODES){
+		if(fd_table[unused_fd].inodeIndex == -1){
+			int unused_in = 0;
+			while (unused_in<NUM_INODES){
+				if(in_table[unused_in].size == -1){
 					// setup the inode table
-					in_table[j].size = 0;
+					in_table[unused_in].size = 0;
 					// setup the directory entry
-					rootDir[current].num = j;
+					rootDir[current].num = unused_in;
 					strncpy(rootDir[current].name, name, MAX_FILE_NAME);
 					// setup the file descriptor
-					fd_table[i].inodeInde = j;
-					fd_table[i].inode = &in_table[j];
-					return i;
+					fd_table[unused_fd].inodeIndex = unused_in;
+					fd_table[unused_fd].inode = &in_table[unused_in];
+					return unused_fd;
 				}
-				j++;
+				unused_in++;
 			}
 			printf("Reached maximum inode allowance\n");
 			return -1;
 		}
-		i++;
+		unused_fd++;
 	}
 	printf("Reached maximum file descriptor allowance\n");
 	return -1;
 
 }
 
-int sfs_fclose(int fileID) {
-	fd_table[fildID].inodeIndex = -1;
-	fd_table[fildID].inode = NULL;
-	fd_table[fildID].rwptr = 0;
+int sfs_fclose(int fileID){
+  // Check if file is alrady closed
+  if(fd_table[fileID].inodeIndex == -1){
+    return -1;
+  }
+	fd_table[fileID].inodeIndex = -1;
+	fd_table[fileID].inode = NULL;
+	fd_table[fileID].rwptr = 0;
 	return 0;
 }
 
@@ -253,14 +233,19 @@ int sfs_fclose(int fileID) {
 
 
 int sfs_fread(int fileID, char *buf, int length) {
-	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
-	int shift = fd_table[fildID].rwptr / DEFAULT_BLOCK_SIZE;
-	int rem = fd_table[fildID].rwptr % DEFAULT_BLOCK_SIZE;
+    if (fd_table[fileID].inodeIndex == -1){
+        printf("file not found in file descriptor\n");
+        return -1;
+    }
+	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
+	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
+	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
+  int read_count = 0;
 
 	while(length > 0){
-		
+
 		// Read from disk to a temporary buffer
-		if(shift < 12){ 
+		if(shift < 12){
 			read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
 		} else { // the data pointer reside in indirect pointer part
 			//TODO
@@ -269,36 +254,45 @@ int sfs_fread(int fileID, char *buf, int length) {
 		// Copy from temporary buffer to destination buffer
 		if (length <= DEFAULT_BLOCK_SIZE - rem){ // reached the last part of data requested
 			memcpy(buf, tmp + rem, length);
+      read_count += length;
 		} else{
 			memcpy(buf, tmp + rem, DEFAULT_BLOCK_SIZE - rem);
+      read_count += DEFAULT_BLOCK_SIZE;
 		}
 		shift++;
 		length -= DEFAULT_BLOCK_SIZE;
 		buf += DEFAULT_BLOCK_SIZE;
-		if (rem > 0) rem = 0; // if this is the first part of data requested		
+		if (rem > 0) rem = 0; // if this is the first part of data requested
 	}
 	free(tmp);
-	return 0;
+	return read_count;
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length) {
-	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
-	int shift = fd_table[fildID].rwptr / DEFAULT_BLOCK_SIZE;
-	int rem = fd_table[fildID].rwptr % DEFAULT_BLOCK_SIZE;
+    if (fd_table[fileID].inodeIndex == -1){
+        printf("file not found in file descriptor\n");
+        return -1;
+    }
+  int write_count = 0;
+	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
+	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
+	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
 	// Adjust the size information about the updated file
-	if (fd_table[fileID].inode->size < fd_table[fildID].rwptr + length){
-		fd_table[fileID].inode->size = fd_table[fildID].rwptr + length;
+	if (fd_table[fileID].inode->size < fd_table[fileID].rwptr + length){
+		fd_table[fileID].inode->size = fd_table[fileID].rwptr + length;
 	}
 	while (length > 0){
-	
+
 		// copy from origin buffer to temporary buffer
 		if (rem > 0){ // first section to be written
 			read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
-		}	
+		}
 		if(length + rem <= DEFAULT_BLOCK_SIZE){ // if this is the last part of data
 			memcpy(tmp + rem, buf, length);
+      write_count+=length;
 		} else{
 			memcpy(tmp + rem, buf, DEFAULT_BLOCK_SIZE);
+      write_count+=DEFAULT_BLOCK_SIZE;
 		}
 
 		// write to disk
@@ -323,24 +317,25 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
 
 	free(tmp);
-	return 0;
+	return write_count;
 }
 
 int sfs_fseek(int fileID, int loc) {
 	fd_table[fileID].rwptr = loc;
+  return 0;
 }
 
 int sfs_remove(char *file) {
 	int current = 0;
 	while (current < NUM_INODES){
 		if (strcmp(file, rootDir[current].name)==0){
-			int blocks_occ = BLOCK_REQ(in_table[rootDir[current].num].size)
+			int blocks_occ = BLOCK_REQ(in_table[rootDir[current].num].size);
 
 			if (blocks_occ>12){
 				// TODO indirect pointer
 				blocks_occ = 12;
 			}
-			for (int i=0; i<block_req; i++){
+			for (int i=0; i<blocks_occ; i++){
 				rm_index(in_table[rootDir[current].num].data_ptrs[i]);
 				in_table[rootDir[current].num].data_ptrs[i] = -1;
 			}

@@ -164,7 +164,7 @@ int sfs_fopen(char *name){
 		if (strcmp(name, rootDir[current].name)==0){
       // Make sure the file is not already opened
       int i = 0;
-			while(i < NUM_INODES){
+      while(i < NUM_INODES){
           if (fd_table[i].inodeIndex == rootDir[current].num){
             return i;
           }
@@ -233,7 +233,11 @@ int sfs_fclose(int fileID){
 
 
 int sfs_fread(int fileID, char *buf, int length) {
-	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
+    if (fd_table[fileID].inodeIndex == -1){
+        printf("file not found in file descriptor\n");
+        return -1;
+    }
+	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
   int read_count = 0;
@@ -265,8 +269,12 @@ int sfs_fread(int fileID, char *buf, int length) {
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length) {
+    if (fd_table[fileID].inodeIndex == -1){
+        printf("file not found in file descriptor\n");
+        return -1;
+    }
   int write_count = 0;
-	char *tmp = malloc(DEFAULT_BLOCK_SIZE);
+	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
 	// Adjust the size information about the updated file
