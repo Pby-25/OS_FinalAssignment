@@ -3,3 +3,4 @@ test/cmake*
 test/.*
 test/*.o
 tmp*
+update.sh
