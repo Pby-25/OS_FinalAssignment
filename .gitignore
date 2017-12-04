@@ -1,5 +1,5 @@
 .vscode
-test/CMake*
 test/cmake*
 test/.*
 test/*.o
+tmp*

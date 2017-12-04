@@ -146,7 +146,7 @@ int sfs_getfilesize(const char* path){
 	// According to provided test cases, there's slash symbol before filename
 	int current = 0;
 	while (current < NUM_INODES){ // avoided using sfs_getnextfilename() to keep the global variable intact
-		if (strcmp(path, rootDir[current].name)==0){
+		if (strncmp(path, rootDir[current].name, MAX_FILE_NAME)==0){
 			return in_table[rootDir[current].num].size;
 		}
 		current++;
@@ -161,7 +161,7 @@ int sfs_fopen(char *name){
   int unused_fd = 0;
 	while (current < NUM_INODES){
 		// If the file exists
-		if (strcmp(name, rootDir[current].name)==0){
+		if (strncmp(name, rootDir[current].name, MAX_FILE_NAME)==0){
       // Make sure the file is not already opened
       int i = 0;
       while(i < NUM_INODES){
@@ -178,6 +178,7 @@ int sfs_fopen(char *name){
           fd_table[unused_fd].rwptr = in_table[rootDir[current].num].size;
           return unused_fd;
         }
+        unused_fd++;
       }
 			printf("Reached maximum file descriptor allowance\n");
 			return -1;
@@ -233,15 +234,19 @@ int sfs_fclose(int fileID){
 
 
 int sfs_fread(int fileID, char *buf, int length) {
-    if (fd_table[fileID].inodeIndex == -1){
-        printf("file not found in file descriptor\n");
-        return -1;
-    }
-	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
-	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
-	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
+  if (fd_table[fileID].inodeIndex == -1){
+      printf("file not found in file descriptor\n");
+      return -1;
+  }
+  void *tmp = malloc(DEFAULT_BLOCK_SIZE);
+  int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
+  int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
   int read_count = 0;
 
+  // Avoid reading garbage values
+  if (fd_table[fileID].rwptr + length > fd_table[fileID].inode->size){
+    length = fd_table[fileID].inode->size - fd_table[fileID].rwptr;
+  }
 	while(length > 0){
 
 		// Read from disk to a temporary buffer
@@ -257,22 +262,24 @@ int sfs_fread(int fileID, char *buf, int length) {
       read_count += length;
 		} else{
 			memcpy(buf, tmp + rem, DEFAULT_BLOCK_SIZE - rem);
-      read_count += DEFAULT_BLOCK_SIZE;
+      read_count += (DEFAULT_BLOCK_SIZE - rem);
 		}
 		shift++;
-		length -= DEFAULT_BLOCK_SIZE;
-		buf += DEFAULT_BLOCK_SIZE;
+		length -= (DEFAULT_BLOCK_SIZE - rem);
+		buf += (DEFAULT_BLOCK_SIZE - rem);
 		if (rem > 0) rem = 0; // if this is the first part of data requested
 	}
 	free(tmp);
+  // update the pointer
+  fd_table[fileID].rwptr += read_count;
 	return read_count;
 }
 
 int sfs_fwrite(int fileID, const char *buf, int length) {
-    if (fd_table[fileID].inodeIndex == -1){
-        printf("file not found in file descriptor\n");
-        return -1;
-    }
+  if (fd_table[fileID].inodeIndex == -1){
+    printf("file not found in file descriptor\n");
+    return -1;
+  }
   int write_count = 0;
 	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
@@ -291,8 +298,8 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 			memcpy(tmp + rem, buf, length);
       write_count+=length;
 		} else{
-			memcpy(tmp + rem, buf, DEFAULT_BLOCK_SIZE);
-      write_count+=DEFAULT_BLOCK_SIZE;
+			memcpy(tmp + rem, buf, DEFAULT_BLOCK_SIZE - rem);
+      write_count += (DEFAULT_BLOCK_SIZE - rem);
 		}
 
 		// write to disk
@@ -307,8 +314,8 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 			//TODO
 		}
 		shift++;
-		length -= DEFAULT_BLOCK_SIZE;
-		buf += DEFAULT_BLOCK_SIZE;
+		length -= (DEFAULT_BLOCK_SIZE - rem);
+		buf += (DEFAULT_BLOCK_SIZE - rem);
 		if (rem > 0) rem = 0;
 	}
 	// update the possible changes to global variables
@@ -317,10 +324,16 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
 
 	free(tmp);
+  // update the pointer
+  fd_table[fileID].rwptr += write_count;
 	return write_count;
 }
 
 int sfs_fseek(int fileID, int loc) {
+  if (fd_table[fileID].inodeIndex == -1){
+    printf("file not found in file descriptor\n");
+    return -1;
+  }
 	fd_table[fileID].rwptr = loc;
   return 0;
 }
@@ -328,7 +341,7 @@ int sfs_fseek(int fileID, int loc) {
 int sfs_remove(char *file) {
 	int current = 0;
 	while (current < NUM_INODES){
-		if (strcmp(file, rootDir[current].name)==0){
+		if (strncmp(file, rootDir[current].name, MAX_FILE_NAME)==0){
 			int blocks_occ = BLOCK_REQ(in_table[rootDir[current].num].size);
 
 			if (blocks_occ>12){
