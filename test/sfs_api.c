@@ -30,7 +30,7 @@ file_descriptor fd_table[NUM_INODES];
 directory_entry rootDir[NUM_INODES];
 
 // initialize a variable to record current position in directory
-int dir_pos = 0;
+int dir_pos = -1;
 
 /*------------------------------------------------------------------*/
 
@@ -129,15 +129,14 @@ void mksfs(int fresh) {
 
 
 int sfs_getnextfilename(char *fname){
-	while (dir_pos < NUM_INODES){
+	while (dir_pos++ < NUM_INODES){
 		if (rootDir[dir_pos].num != -1){
 			strncpy(fname, rootDir[dir_pos].name, MAX_FILE_NAME);
 			return 1;
 		}
-		dir_pos++;
 	}
 	printf("Reached end of directory\n");
-	dir_pos = 0;
+	dir_pos = -1;
 	return 0;
 }
 
@@ -186,6 +185,31 @@ int sfs_fopen(char *name){
 		current++;
 	}
 	// if the file does not exist, make a new one
+  // First let's make sure the name is acceptable
+  int eligible_len = 0;
+  char *tmp = name;
+  int ext_p = 0; // period after which the extension is found
+  do{
+    // Stop when reached the end of name, eligible unless it's an empty name
+    if(*(tmp + eligible_len)=='\0'){
+      break;
+    // ineligible_len if the filename is too long
+    } else if (eligible_len >= MAX_FILE_NAME){
+      eligible_len = 0;
+      break;
+    }
+    // record the last period to calculate extension length later
+    if (*(tmp + eligible_len)=='.'){
+      ext_p = eligible_len;
+    }
+    eligible_len++;
+  } while (eligible_len);
+  // file name null or longer than 20 || extension longer than 3 || name longer than 16
+  if (!eligible_len || (eligible_len - ext_p > MAX_EXTENSION_NAME + 1
+      || ext_p > MAX_FILE_NAME_SANS_EXT)){
+    printf("ineligible_len name for new file\n");
+    return -1;
+  }
 	current = 0;
 	while (current < NUM_INODES){
 		if (rootDir[current].num == -1) break;
@@ -296,11 +320,6 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
   uint16_t *ind_ptr;
 
-	// Adjust the size information about the updated file
-	if (fd_table[fileID].inode->size < fd_table[fileID].rwptr + length){
-		fd_table[fileID].inode->size = fd_table[fileID].rwptr + length;
-	}
-
 	// check if it is necessary to access the indirect pointer section
 	int iptr_req = BLOCK_REQ(fd_table[fileID].rwptr + length) > 12;
 	if (iptr_req){
@@ -322,7 +341,12 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 
 		// copy from origin buffer to temporary buffer
 		if (rem > 0){ // first section to be written
-			read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
+      if (shift < 12){
+        read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
+      } else { // other part of the program will make sure there's an indirect pointer allocated
+        read_blocks(ind_ptr[shift-12], 1, tmp);
+      }
+
 		}
 		if(length + rem <= DEFAULT_BLOCK_SIZE){ // if this is the last part of data
 			memcpy(tmp + rem, buf, length);
@@ -357,10 +381,6 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 		buf += (DEFAULT_BLOCK_SIZE - rem);
 		if (rem > 0) rem = 0;
 	}
-	// update the possible changes to global variables
-	write_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table); // inodes table
-	write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir); // directory entry
-	write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
 
 	free(tmp);
 	if (iptr_req){
@@ -371,12 +391,27 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 
 	// update the rw pointer
 	fd_table[fileID].rwptr += write_count;
+  // Adjust the size information about the updated file
+  if (fd_table[fileID].inode->size < fd_table[fileID].rwptr){
+    fd_table[fileID].inode->size = fd_table[fileID].rwptr;
+  }
+
+  // update the possible changes to global variables
+  write_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table); // inodes table
+  write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir); // directory entry
+  write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
+
 	return write_count;
 }
 
 int sfs_fseek(int fileID, int loc) {
   if (fd_table[fileID].inodeIndex == -1){
     printf("file not found in file descriptor\n");
+    return -1;
+  }
+  // Make sure the new location is not out of bound
+  if (fd_table[fileID].inode->size < loc){
+    printf("read/write pointer location requested out of bound\n");
     return -1;
   }
 	fd_table[fileID].rwptr = loc;
@@ -395,7 +430,7 @@ int sfs_remove(char *file) {
 				read_blocks(in_table[rootDir[current].num].indirectPointer, 1, ind_ptr);
 				// clear indirect pointer section firse
 				while(blocks_occ>12){
-					rm_index(ind_ptr[blocks_occ-12]);
+					rm_index(ind_ptr[blocks_occ-12-1]);
 					blocks_occ--;
 				}
 				rm_index(in_table[rootDir[current].num].indirectPointer);
@@ -414,6 +449,7 @@ int sfs_remove(char *file) {
 			write_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table); // inodes table
 			write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir); // directory entry
 			write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
+            return 0;
 		}
 		current++;
 	}

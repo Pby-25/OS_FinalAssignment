@@ -30,7 +30,10 @@ uint32_t get_index() {
 
     // find the first section with a free bit
     // let's ignore overflow for now...
-    while (free_bit_map[i] == 0) { i++; }
+    while (free_bit_map[i] == 0) {
+      if (i > NUM_BLOCKS ) return -1;
+      i++; 
+    }
 
     // now, find the first free bit
     /*

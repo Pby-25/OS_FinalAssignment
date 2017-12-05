@@ -158,8 +158,7 @@ main(int argc, char **argv)
     for (j = 0; j < filesize[i]; j += chunksize) {
       if ((filesize[i] - j) < 10) {
         chunksize = filesize[i] - j;
-      }
-      else {
+      } else {
         chunksize = (rand() % (filesize[i] - j)) + 1;
       }
       if ((buffer = malloc(chunksize)) == NULL) {
@@ -173,13 +172,18 @@ main(int argc, char **argv)
         readsize = chunksize;
       }
       for (k = 0; k < readsize; k++) {
-        if (buffer[k] != (char)(j+k)) {
+        if (buffer[k] != (char) (j + k)) {
           fprintf(stderr, "ERROR: data error at offset %d in file %s (%d,%d)\n",
-                  j+k, names[i], buffer[k], (char)(j+k));
+                  j + k, names[i], buffer[k], (char) (j + k));
           error_count++;
           break;
+        } /*else {
+          fprintf(stdout, "data error at offset %d in file %s (%d,%d)\n",
+                  j + k, names[i], buffer[k], (char) (j + k));
         }
-      }
+      }// <- extra bracket
+      exit(error_count);*/
+    }
       free(buffer);
     }
   }

@@ -5,6 +5,9 @@
 
 #define MAX_FILE_NAME 20
 #define MAX_EXTENSION_NAME 3
+#define MAX_FILE_NAME_SANS_EXT 16
+#define MAXFILENAME 20 // for fuse wrapper compatibility
+
 
 typedef struct superblock_t{
     uint64_t magic;
@@ -27,18 +30,18 @@ typedef struct inode_t {
 /*
  * inodeIndex    which inode this entry describes
  * inode  pointer towards the inode in the inode table
- *rwptr    where in the file to start   
+ *rwptr    where in the file to start
  */
 typedef struct file_descriptor {
     uint64_t inodeIndex;
-    inode_t* inode; // 
+    inode_t* inode; //
     uint64_t rwptr;
 } file_descriptor;
 
 
 typedef struct directory_entry{
-    int num; // represents the inode number of the entery. 
-    char name[MAX_FILE_NAME]; // represents the name of the entery. 
+    int num; // represents the inode number of the entery.
+    char name[MAX_FILE_NAME]; // represents the name of the entery.
 } directory_entry;
 
 
