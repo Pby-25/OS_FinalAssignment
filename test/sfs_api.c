@@ -37,7 +37,6 @@ int dir_pos = -1;
 
 // Helper function that initialize the superblock section
 void init_super(){
-	// initialize the superblock table
 	// assign the initial values
 	sb_table.magic = MAGIC_NUM;
 	sb_table.block_size = DEFAULT_BLOCK_SIZE;
@@ -85,8 +84,7 @@ void init_rdt(){
 
 void mksfs(int fresh) {
 
-	if (fresh) {
-		// initialize a fresh disk
+	if (fresh) { // initialize a fresh disk
 		init_fresh_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS);
 
 		// initialzie the global variabes
@@ -94,6 +92,8 @@ void mksfs(int fresh) {
 		init_int();
 		init_fdt();
 		init_rdt();
+
+		// all bits in bitmap is initialized to HIGH in bitmap.c
 
 		// initialize the bitmap for the superblock, inodes, and directories
 		for(int index = 0; index < DIR_BLOCK_N + INODES_BLOCK_N + SUPER_BLOCK_N; index++){
@@ -104,7 +104,7 @@ void mksfs(int fresh) {
 
 		// setup the root directory inode
 		in_table[ROOT_INODE].size =  sizeof(directory_entry)*NUM_INODES;
-		for (int i=0; i<DIR_BLOCK_N; i++){ // the root directory table occupies less than 12 blocks
+		for (int i=0; i<DIR_BLOCK_N; i++){ // it is known that the root directory table occupies less than 12 blocks
 			in_table[ROOT_INODE].data_ptrs[i] = i + INODES_BLOCK_N + SUPER_BLOCK_N;
 		}
 
@@ -114,7 +114,7 @@ void mksfs(int fresh) {
 		write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir);
 		write_blocks(NUM_BLOCKS-1, 1, free_bit_map);
 
-	} else {
+	} else { // load an existing disk
 		init_disk(DU_ZHUOCHENG_DISK, DEFAULT_BLOCK_SIZE, NUM_BLOCKS);
 		// Read data into appropriate global variables
 		read_blocks(0, SUPER_BLOCK_N, &sb_table);
@@ -130,19 +130,20 @@ void mksfs(int fresh) {
 
 int sfs_getnextfilename(char *fname){
 	while (dir_pos++ < NUM_INODES){
-		if (rootDir[dir_pos].num != -1){
+		if (rootDir[dir_pos].num != -1){ // if the position is occupied
 			strncpy(fname, rootDir[dir_pos].name, MAX_FILE_NAME);
 			return 1;
 		}
 	}
 	printf("Reached end of directory\n");
+	// refresh the global indicator
 	dir_pos = -1;
 	return 0;
 }
 
 int sfs_getfilesize(const char* path){
-	// Since there's only a root directory in this assignment, file path is equivalent to file length
-	// According to provided test cases, there's slash symbol before filename
+	// Since there's only a root directory in this assignment, file path is equivalent to file name
+	// According to provided test cases, there's no slash symbol before filename
 	int current = 0;
 	while (current < NUM_INODES){ // avoided using sfs_getnextfilename() to keep the global variable intact
 		if (strncmp(path, rootDir[current].name, MAX_FILE_NAME)==0){
@@ -150,7 +151,7 @@ int sfs_getfilesize(const char* path){
 		}
 		current++;
 	}
-	printf("File does not exist\n");
+	printf("Attempted get size info about a file that does not exist\n");
 	return -1;
 }
 
@@ -161,66 +162,70 @@ int sfs_fopen(char *name){
 	while (current < NUM_INODES){
 		// If the file exists
 		if (strncmp(name, rootDir[current].name, MAX_FILE_NAME)==0){
-      // Make sure the file is not already opened
-      int i = 0;
-      while(i < NUM_INODES){
-          if (fd_table[i].inodeIndex == rootDir[current].num){
-            return i;
-          }
+			// Make sure the file is not already opened
+			int i = 0;
+			while(i < NUM_INODES){
+				if (fd_table[i].inodeIndex == rootDir[current].num){
+					return i;
+				}
 				i++;
 			}
-      while (unused_fd < NUM_INODES ){
-        if(fd_table[unused_fd].inodeIndex == -1){
-          // load the corresponding inode into file descriptor
-          fd_table[unused_fd].inodeIndex = rootDir[current].num;
-          fd_table[unused_fd].inode = &in_table[rootDir[current].num];
-          fd_table[unused_fd].rwptr = in_table[rootDir[current].num].size;
-          return unused_fd;
-        }
-        unused_fd++;
-      }
+			while (unused_fd < NUM_INODES ){
+				if(fd_table[unused_fd].inodeIndex == -1){
+					// load the corresponding inode into file descriptor
+					fd_table[unused_fd].inodeIndex = rootDir[current].num;
+					fd_table[unused_fd].inode = &in_table[rootDir[current].num];
+					fd_table[unused_fd].rwptr = in_table[rootDir[current].num].size;
+					return unused_fd;
+				}
+				unused_fd++;
+			}
+		
 			printf("Reached maximum file descriptor allowance\n");
 			return -1;
 		}
 		current++;
 	}
+	
 	// if the file does not exist, make a new one
-  // First let's make sure the name is acceptable
-  int eligible_len = 0;
-  char *tmp = name;
-  int ext_p = 0; // period after which the extension is found
-  do{
-    // Stop when reached the end of name, eligible unless it's an empty name
-    if(*(tmp + eligible_len)=='\0'){
-      break;
-    // ineligible_len if the filename is too long
-    } else if (eligible_len >= MAX_FILE_NAME){
-      eligible_len = 0;
-      break;
-    }
-    // record the last period to calculate extension length later
-    if (*(tmp + eligible_len)=='.'){
-      ext_p = eligible_len;
-    }
-    eligible_len++;
-  } while (eligible_len);
-  // file name null or longer than 20 || extension longer than 3 || name longer than 16
-  if (!eligible_len || (eligible_len - ext_p > MAX_EXTENSION_NAME + 1
-      || ext_p > MAX_FILE_NAME_SANS_EXT)){
-    printf("ineligible_len name for new file\n");
-    return -1;
-  }
+	// First let's make sure the name is acceptable
+	int eligible_len = 0;
+	char *tmp = name;
+	int ext_p = 0; // period after which the extension is found
+	do{
+		// Stop when reached the end of name, eligible unless it's an empty name
+		if(*(tmp + eligible_len)=='\0'){
+		break;
+		// ineligible if the filename is too long
+		} else if (eligible_len >= MAX_FILE_NAME){
+		eligible_len = 0;
+		break;
+		}
+		// record the last period to calculate extension length later
+		if (*(tmp + eligible_len)=='.'){
+		ext_p = eligible_len;
+		}
+		eligible_len++;
+	} while (eligible_len);
+
+	// filename DNE or longer than 20 || extension longer than 3 || name w/o ext. longer than 16
+	if (!eligible_len || (eligible_len - ext_p > MAX_EXTENSION_NAME + 1
+		|| ext_p > MAX_FILE_NAME_SANS_EXT)){
+		printf("ineligible_len name for new file\n");
+		return -1;
+	}
+
 	current = 0;
-	while (current < NUM_INODES){
+	while (current < NUM_INODES){ // find an empty spot in root directory
 		if (rootDir[current].num == -1) break;
 		current++;
 		}
 	unused_fd =0;
 	while(unused_fd<NUM_INODES){
-		if(fd_table[unused_fd].inodeIndex == -1){
+		if(fd_table[unused_fd].inodeIndex == -1){ // find an empty spot in file descriptor
 			int unused_in = 0;
 			while (unused_in<NUM_INODES){
-				if(in_table[unused_in].size == -1){
+				if(in_table[unused_in].size == -1){ // find an empty spot in inode table
 					// setup the inode table
 					in_table[unused_in].size = 0;
 					// setup the directory entry
@@ -244,31 +249,32 @@ int sfs_fopen(char *name){
 }
 
 int sfs_fclose(int fileID){
-	  // Check if file is alrady closed
-	  if(fd_table[fileID].inodeIndex == -1){
+	// Check if file is alrady closed
+	if(fd_table[fileID].inodeIndex == -1){
+		printf("Attempted to close a file that does not exist\n");
 		return -1;
-	  }
-		fd_table[fileID].inodeIndex = -1;
-		fd_table[fileID].inode = NULL;
-		fd_table[fileID].rwptr = 0;
-		return 0;
+	}
+	fd_table[fileID].inodeIndex = -1;
+	fd_table[fileID].inode = NULL;
+	fd_table[fileID].rwptr = 0;
+	return 0;
 }
 
 int sfs_fread(int fileID, char *buf, int length) {
-	  if (fd_table[fileID].inodeIndex == -1){
-		  printf("file not found in file descriptor\n");
-		  return -1;
-	  }
-	  void *tmp = malloc(DEFAULT_BLOCK_SIZE);
-	  int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
-	  int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
-	  int read_count = 0;
-    uint16_t *ind_ptr;
+	if (fd_table[fileID].inodeIndex == -1){
+		printf("file not found in file descriptor (fread)\n");
+		return -1;
+	}
+	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
+	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
+	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
+	int read_count = 0;
+	uint16_t *ind_ptr;
 
-	  // Avoid reading garbage values
-	  if (fd_table[fileID].rwptr + length > fd_table[fileID].inode->size){
-		length = fd_table[fileID].inode->size - fd_table[fileID].rwptr;
-	  }
+	// Avoid reading garbage values
+	if (fd_table[fileID].rwptr + length > fd_table[fileID].inode->size){
+	length = fd_table[fileID].inode->size - fd_table[fileID].rwptr;
+	}
 
 	// check if an indirect pointer is needed after removing garbage values
 	int iptr_req = BLOCK_REQ(fd_table[fileID].rwptr + length) > 12;
@@ -311,14 +317,14 @@ int sfs_fread(int fileID, char *buf, int length) {
 
 int sfs_fwrite(int fileID, const char *buf, int length) {
 	if (fd_table[fileID].inodeIndex == -1){
-		printf("file not found in file descriptor\n");
+		printf("file not found in file descriptor (fwrite)\n");
 		return -1;
 	}
 	int write_count = 0;
 	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
-  uint16_t *ind_ptr;
+	uint16_t *ind_ptr;
 
 	// check if it is necessary to access the indirect pointer section
 	int iptr_req = BLOCK_REQ(fd_table[fileID].rwptr + length) > 12;
@@ -328,6 +334,12 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 		// if the indirect pointer has not been allocated
 		if (fd_table[fileID].inode->indirectPointer == -1){
 			fd_table[fileID].inode->indirectPointer = get_index();
+			// Check if space is allocated properly
+			if (fd_table[fileID].inode->indirectPointer == -1){
+				printf("insufficient space\n");
+				free(ind_ptr);
+				return write_count;
+			}
 			// initialize the indirect pointer
 			for (int i=0; i<DEFAULT_BLOCK_SIZE/sizeof(uint16_t); i++){
 				ind_ptr[i] = -1;
@@ -341,17 +353,17 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 
 		// copy from origin buffer to temporary buffer
 		if (rem > 0){ // first section to be written
-      if (shift < 12){
-        read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
-      } else { // other part of the program will make sure there's an indirect pointer allocated
-        read_blocks(ind_ptr[shift-12], 1, tmp);
-      }
-
+			if (shift < 12){
+				read_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
+			} else { // other part of the program will make sure there's an indirect pointer allocated
+				read_blocks(ind_ptr[shift-12], 1, tmp);
+			}
 		}
+
 		if(length + rem <= DEFAULT_BLOCK_SIZE){ // if this is the last part of data
 			memcpy(tmp + rem, buf, length);
 			write_count+=length;
-		} else{
+		} else {
 			memcpy(tmp + rem, buf, DEFAULT_BLOCK_SIZE - rem);
 			write_count += (DEFAULT_BLOCK_SIZE - rem);
 		}
@@ -361,17 +373,27 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 			// allocate space if needed
 			if (fd_table[fileID].inode->data_ptrs[shift] == -1){
 				fd_table[fileID].inode->data_ptrs[shift] = get_index();
+				// Check if space is allocated properly
+				if (fd_table[fileID].inode->data_ptrs[shift] == -1){
+					printf("insufficient space\n");
+					break;
+				}
 			}
 			write_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
 
 		} else { // if indirect pointer need to be used
             if ( shift-12 >= DEFAULT_BLOCK_SIZE/sizeof(uint16_t)){
-                printf("Single file size limit reached\n");
+                printf("single file size limit reached\n");
                 break;
             }
 			// allocate space if needed
-			if (ind_ptr[shift-12] == (uint16_t)-1){
+			if (ind_ptr[shift-12] == (uint16_t) -1){
 				ind_ptr[shift-12] = get_index();
+				// Check if space is allocated properly
+				if (ind_ptr[shift-12] == (uint16_t) -1){
+					printf("insufficient space\n");
+					break;
+				}
 			}
 			write_blocks(ind_ptr[shift-12], 1, tmp);
 		}
@@ -391,31 +413,31 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 
 	// update the rw pointer
 	fd_table[fileID].rwptr += write_count;
-  // Adjust the size information about the updated file
-  if (fd_table[fileID].inode->size < fd_table[fileID].rwptr){
-    fd_table[fileID].inode->size = fd_table[fileID].rwptr;
-  }
+	// Adjust the size information about the updated file
+	if (fd_table[fileID].inode->size < fd_table[fileID].rwptr){
+		fd_table[fileID].inode->size = fd_table[fileID].rwptr;
+	}
 
-  // update the possible changes to global variables
-  write_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table); // inodes table
-  write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir); // directory entry
-  write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
+	// update the possible changes to global variables
+	write_blocks(SUPER_BLOCK_N, INODES_BLOCK_N, in_table); // inodes table
+	write_blocks(SUPER_BLOCK_N + INODES_BLOCK_N, DIR_BLOCK_N, rootDir); // directory entry
+	write_blocks(NUM_BLOCKS-1, 1, free_bit_map); // free bitmap
 
 	return write_count;
 }
 
 int sfs_fseek(int fileID, int loc) {
-  if (fd_table[fileID].inodeIndex == -1){
-    printf("file not found in file descriptor\n");
-    return -1;
-  }
-  // Make sure the new location is not out of bound
-  if (fd_table[fileID].inode->size < loc){
-    printf("read/write pointer location requested out of bound\n");
-    return -1;
-  }
+	if (fd_table[fileID].inodeIndex == -1){
+		printf("file not found in file descriptor (fseek)\n");
+		return -1;
+	}
+	// Make sure the new location is not out of bound
+	if (fd_table[fileID].inode->size < loc){
+		printf("read/write pointer location requested out of bound\n");
+		return -1;
+	}
 	fd_table[fileID].rwptr = loc;
-  return 0;
+	return 0;
 }
 
 int sfs_remove(char *file) {
@@ -453,6 +475,6 @@ int sfs_remove(char *file) {
 		}
 		current++;
 	}
-	printf("File does not exist\n");
+	printf("Attempted to remove a file that does not exist\n");
 	return -1;
 }

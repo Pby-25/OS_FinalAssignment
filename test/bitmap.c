@@ -29,7 +29,7 @@ uint32_t get_index() {
     uint32_t i = 0;
 
     // find the first section with a free bit
-    // let's ignore overflow for now...
+	// returns -1 if overflow
     while (free_bit_map[i] == 0) {
       if (i > NUM_BLOCKS ) return -1;
       i++; 
