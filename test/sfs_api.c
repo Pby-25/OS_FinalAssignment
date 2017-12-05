@@ -269,7 +269,7 @@ int sfs_fread(int fileID, char *buf, int length) {
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
 	int read_count = 0;
-	uint16_t *ind_ptr;
+	uint16_t *ind_ptr = NULL;
 
 	// Avoid reading garbage values
 	if (fd_table[fileID].rwptr + length > fd_table[fileID].inode->size){
@@ -324,7 +324,7 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	void *tmp = malloc(DEFAULT_BLOCK_SIZE);
 	int shift = fd_table[fileID].rwptr / DEFAULT_BLOCK_SIZE;
 	int rem = fd_table[fileID].rwptr % DEFAULT_BLOCK_SIZE;
-	uint16_t *ind_ptr;
+	uint16_t *ind_ptr = NULL;
 
 	// check if it is necessary to access the indirect pointer section
 	int iptr_req = BLOCK_REQ(fd_table[fileID].rwptr + length) > 12;
