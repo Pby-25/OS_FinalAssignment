@@ -350,6 +350,11 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 	}
 
 	while (length > 0){
+        // make sure the writing can proceed
+        if ( shift >= DEFAULT_BLOCK_SIZE/sizeof(uint16_t) + 12){
+            printf("single file size limit reached\n");
+            break;
+        }
 
 		// copy from origin buffer to temporary buffer
 		if (rem > 0){ // first section to be written
@@ -382,10 +387,7 @@ int sfs_fwrite(int fileID, const char *buf, int length) {
 			write_blocks(fd_table[fileID].inode->data_ptrs[shift], 1, tmp);
 
 		} else { // if indirect pointer need to be used
-            if ( shift-12 >= DEFAULT_BLOCK_SIZE/sizeof(uint16_t)){
-                printf("single file size limit reached\n");
-                break;
-            }
+
 			// allocate space if needed
 			if (ind_ptr[shift-12] == (uint16_t) -1){
 				ind_ptr[shift-12] = get_index();
