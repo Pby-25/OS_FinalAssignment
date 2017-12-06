@@ -189,28 +189,27 @@ int sfs_fopen(char *name){
     
     // if the file does not exist, make a new one
     // First let's make sure the name is acceptable
-    int eligible_len = 0;
+    int eligible = 0;
     char *tmp = name;
-    int ext_p = 0; // period after which the extension is found
+    int ext_p = MAX_FILE_NAME_SANS_EXT; // period after which the extension is found
     do{
         // Stop when reached the end of name, eligible unless it's an empty name
-        if(*(tmp + eligible_len)=='\0'){
+        if(*(tmp + eligible)=='\0'){
         break;
         // ineligible if the filename is too long
-        } else if (eligible_len >= MAX_FILE_NAME){
-        eligible_len = 0;
+        } else if (eligible >= MAX_FILE_NAME){
+        eligible = 0;
         break;
         }
         // record the last period to calculate extension length later
-        if (*(tmp + eligible_len)=='.'){
-        ext_p = eligible_len;
+        if (*(tmp + eligible)=='.'){
+        ext_p = eligible;
         }
-        eligible_len++;
-    } while (eligible_len);
+        eligible++;
+    } while (eligible);
 
     // filename DNE or longer than 20 || extension longer than 3 || name w/o ext. longer than 16
-    if (!eligible_len || (eligible_len - ext_p > MAX_EXTENSION_NAME + 1
-        || ext_p > MAX_FILE_NAME_SANS_EXT)){
+    if (!eligible || eligible - ext_p > MAX_EXTENSION_NAME + 1 || ext_p > MAX_FILE_NAME_SANS_EXT){
         printf("ineligible name for new file\n");
         return -1;
     }
