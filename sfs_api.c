@@ -180,18 +180,19 @@ int sfs_fopen(char *name){
                 }
                 unused_fd++;
             }
-        
+
             printf("Reached maximum file descriptor allowance\n");
             return -1;
         }
         current++;
     }
-    
+
     // if the file does not exist, make a new one
     // First let's make sure the name is acceptable
     int eligible = 0;
     char *tmp = name;
     int ext_p = MAX_FILE_NAME_SANS_EXT; // period after which the extension is found
+    int ext_exist = 0; // true if extension name isn't null
     do{
         // Stop when reached the end of name, eligible unless it's an empty name
         if(*(tmp + eligible)=='\0'){
@@ -204,12 +205,14 @@ int sfs_fopen(char *name){
         // record the last period to calculate extension length later
         if (*(tmp + eligible)=='.'){
         ext_p = eligible;
+        ext_exist = 1;
         }
         eligible++;
     } while (eligible);
 
     // filename DNE or longer than 20 || extension longer than 3 || name w/o ext. longer than 16
-    if (!eligible || eligible - ext_p > MAX_EXTENSION_NAME + 1 || ext_p > MAX_FILE_NAME_SANS_EXT){
+    if (!eligible || eligible - ext_p > MAX_EXTENSION_NAME + 1 || ext_p > MAX_FILE_NAME_SANS_EXT
+        || (ext_exist && eligible > MAX_FILE_NAME_SANS_EXT)){
         printf("ineligible name for new file\n");
         return -1;
     }
@@ -244,7 +247,6 @@ int sfs_fopen(char *name){
     }
     printf("Reached maximum file descriptor allowance\n");
     return -1;
-
 }
 
 int sfs_fclose(int fileID){
