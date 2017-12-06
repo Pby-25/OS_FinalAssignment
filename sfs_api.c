@@ -212,7 +212,7 @@ int sfs_fopen(char *name){
 
     // filename DNE or longer than 20 || extension longer than 3 || name w/o ext. longer than 16
     if (!eligible || eligible - ext_p > MAX_EXTENSION_NAME + 1 || ext_p > MAX_FILE_NAME_SANS_EXT
-        || (ext_exist && eligible > MAX_FILE_NAME_SANS_EXT)){
+        || (!ext_exist && eligible > MAX_FILE_NAME_SANS_EXT)){
         printf("ineligible name for new file\n");
         return -1;
     }
