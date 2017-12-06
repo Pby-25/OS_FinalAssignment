@@ -211,7 +211,7 @@ int sfs_fopen(char *name){
     // filename DNE or longer than 20 || extension longer than 3 || name w/o ext. longer than 16
     if (!eligible_len || (eligible_len - ext_p > MAX_EXTENSION_NAME + 1
         || ext_p > MAX_FILE_NAME_SANS_EXT)){
-        printf("ineligible_len name for new file\n");
+        printf("ineligible name for new file\n");
         return -1;
     }
 
@@ -448,11 +448,9 @@ int sfs_remove(char *file) {
         if (strncmp(file, rootDir[current].name, MAX_FILE_NAME)==0){
             int blocks_occ = BLOCK_REQ(in_table[rootDir[current].num].size);
 
-
-            if (blocks_occ>12){
+            if (blocks_occ>12){ // clear the indirect pointer section first
                 uint16_t *ind_ptr = malloc(DEFAULT_BLOCK_SIZE);
                 read_blocks(in_table[rootDir[current].num].indirectPointer, 1, ind_ptr);
-                // clear indirect pointer section firse
                 while(blocks_occ>12){
                     rm_index(ind_ptr[blocks_occ-12-1]);
                     blocks_occ--;
